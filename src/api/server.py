@@ -9,14 +9,21 @@ from typing import Any, Dict, Optional
 
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Request
+from pydantic import BaseModel
 
 from ..config.settings import Settings
 from ..events.bus import EventBus
-from ..events.types import WebhookEvent
+from ..events.types import AgentResponseEvent, WebhookEvent
 from ..storage.database import DatabaseManager
 from .auth import verify_github_signature, verify_shared_secret
 
 logger = structlog.get_logger()
+
+
+class SendMessageRequest(BaseModel):
+    text: str
+    chat_id: Optional[int] = None
+    parse_mode: Optional[str] = None
 
 
 def create_api_app(
@@ -36,6 +43,31 @@ def create_api_app(
     @app.get("/health")
     async def health_check() -> Dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/send")
+    async def send_message(
+        body: SendMessageRequest,
+        authorization: Optional[str] = Header(None),
+    ) -> Dict[str, str]:
+        """Send a passthrough message directly to Telegram without Claude processing."""
+        secret = settings.webhook_api_secret
+        if not secret:
+            raise HTTPException(
+                status_code=500,
+                detail="WEBHOOK_API_SECRET not configured",
+            )
+        if not verify_shared_secret(authorization, secret):
+            raise HTTPException(status_code=401, detail="Invalid authorization")
+
+        event = AgentResponseEvent(
+            chat_id=body.chat_id or 0,
+            text=body.text,
+            parse_mode=body.parse_mode,
+        )
+        await event_bus.publish(event)
+
+        logger.info("Passthrough message queued", chat_id=body.chat_id or 0)
+        return {"status": "sent", "event_id": event.id}
 
     @app.post("/webhooks/{provider}")
     async def receive_webhook(
