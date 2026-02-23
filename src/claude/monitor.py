@@ -237,9 +237,14 @@ class ToolMonitor:
                     logger.warning("Invalid file path in tool call", **violation)
                     return False, error
 
-        # Validate shell commands (skip in agentic mode — Claude Code runs
-        # inside its own sandbox, and these patterns block normal gh/git usage)
-        if tool_name in ["bash", "shell", "Bash"] and not self.agentic_mode:
+        # Validate shell commands (skip in agentic mode or when tool validation
+        # is disabled — Claude Code runs inside its own sandbox, and these
+        # patterns block normal gh/git usage)
+        if (
+            tool_name in ["bash", "shell", "Bash"]
+            and not self.agentic_mode
+            and not self.disable_tool_validation
+        ):
             command = tool_input.get("command", "")
 
             # Check for dangerous commands

@@ -68,7 +68,7 @@ async def _format_progress_update(update_obj) -> Optional[str]:
 
     elif update_obj.type == "assistant" and update_obj.tool_calls:
         # Show when tools are being called
-        tool_names = update_obj.get_tool_names()
+        tool_names = [tc.get("name", "Unknown") for tc in update_obj.tool_calls]
         if tool_names:
             tools_text = ", ".join(tool_names)
             return f"🔧 <b>Using tools:</b> {tools_text}"
@@ -478,22 +478,16 @@ async def handle_text_message(
         if conversation_enhancer and claude_response:
             try:
                 # Update conversation context
-                conversation_context = conversation_enhancer.update_context(
-                    session_id=claude_response.session_id,
-                    user_id=user_id,
-                    working_directory=str(current_dir),
-                    tools_used=claude_response.tools_used or [],
-                    response_content=claude_response.content,
+                conversation_enhancer.update_context(user_id, claude_response)
+                conversation_context = conversation_enhancer.get_or_create_context(
+                    user_id
                 )
 
                 # Check if we should show follow-up suggestions
-                if conversation_enhancer.should_show_suggestions(
-                    claude_response.tools_used or [], claude_response.content
-                ):
+                if conversation_enhancer.should_show_suggestions(claude_response):
                     # Generate follow-up suggestions
                     suggestions = conversation_enhancer.generate_follow_up_suggestions(
-                        claude_response.content,
-                        claude_response.tools_used or [],
+                        claude_response,
                         conversation_context,
                     )
 
